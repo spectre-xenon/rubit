@@ -1,0 +1,3 @@
+[workspace]
+members = ["rubit"]
+resolver = "1"
