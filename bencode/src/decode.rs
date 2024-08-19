@@ -1,5 +1,5 @@
 use core::str;
-use std::{collections::HashMap, process::exit};
+use std::{collections::HashMap, net::Ipv4Addr, process::exit};
 
 use sha1::{Digest, Sha1};
 
@@ -19,6 +19,7 @@ pub enum BencodeTypes {
     Dict(HashMap<String, BencodeTypes>),
     InfoHash([u8; 20]),
     Pieces(Vec<[u8; 20]>),
+    PeersCompact(Vec<(Ipv4Addr, u16)>),
 }
 
 fn parse_to_utf8(slice: &[u8]) -> Result<String, ParseError> {
@@ -39,6 +40,10 @@ pub fn decode_string(pointer: &mut usize, buf: &Vec<u8>) -> Result<String, Parse
         *pointer += 1;
     }
     *pointer += 1;
+
+    if string_len_bytes.len() == 1 && string_len_bytes[0] == 48 {
+        return Ok(String::from(""));
+    }
 
     let string_len = parse_to_usize(&string_len_bytes)? + *pointer;
     let slice: &[u8] = &buf[*pointer..string_len];
@@ -116,6 +121,36 @@ pub fn decode_pieces(pointer: &mut usize, buf: &Vec<u8>) -> Result<Vec<[u8; 20]>
     Ok(pieces_vec)
 }
 
+fn decode_peers(pointer: &mut usize, buf: &Vec<u8>) -> Result<BencodeTypes, ParseError> {
+    if buf[*pointer] == LIST_START {
+        let decoded = decode_list(pointer, buf)?;
+        return Ok(BencodeTypes::List(decoded));
+    }
+
+    let mut peers_len_bytes = Vec::new();
+
+    while buf[*pointer] != STRING_DELIM {
+        peers_len_bytes.push(buf[*pointer]);
+        *pointer += 1;
+    }
+    *pointer += 1;
+
+    let peers_len = parse_to_usize(&peers_len_bytes)? + *pointer;
+
+    let peers_vec: Vec<(Ipv4Addr, u16)> = buf[*pointer..peers_len]
+        .chunks_exact(6)
+        .map(|item| {
+            let ip = Ipv4Addr::new(item[0], item[1], item[2], item[3]);
+            let port = u16::from_be_bytes([item[4], item[5]]);
+            (ip, port)
+        })
+        .collect();
+
+    *pointer = peers_len;
+
+    Ok(BencodeTypes::PeersCompact(peers_vec))
+}
+
 pub fn decode_dict(
     pointer: &mut usize,
     buf: &Vec<u8>,
@@ -146,6 +181,7 @@ pub fn decode_dict(
             n if n.is_ascii_digit() && temp_key == "pieces" => {
                 BencodeTypes::Pieces(decode_pieces(pointer, buf)?)
             }
+            n if n.is_ascii_digit() && temp_key == "peers" => decode_peers(pointer, buf)?,
             n if n.is_ascii_digit() => BencodeTypes::String(decode_string(pointer, buf)?),
             INTEGER_START => BencodeTypes::Integer(decode_int(pointer, buf)?),
             LIST_START => BencodeTypes::List(decode_list(pointer, buf)?),
