@@ -32,45 +32,62 @@ fn parse_to_usize(slice: &[u8]) -> Result<usize, ParseError> {
     Ok(string.parse()?)
 }
 
-pub fn decode_string(pointer: &mut usize, buf: &Vec<u8>) -> Result<String, ParseError> {
-    let mut string_len_bytes = Vec::new();
+fn get_string_len(pointer: &mut usize, buf: &Vec<u8>) -> Result<usize, ParseError> {
+    let mut temp = Vec::new();
 
+    // Increment and push to vec until delim
     while buf[*pointer] != STRING_DELIM {
-        string_len_bytes.push(buf[*pointer]);
+        temp.push(buf[*pointer]);
         *pointer += 1;
     }
+
+    // Place pointer on the start of the string (after delim)
     *pointer += 1;
 
-    if string_len_bytes.len() == 1 && string_len_bytes[0] == 48 {
-        return Ok(String::from(""));
+    if temp.len() == 1 && temp[0] == 48 {
+        return Ok(0);
     }
 
-    let string_len = parse_to_usize(&string_len_bytes)? + *pointer;
+    Ok(parse_to_usize(&temp)?)
+}
+
+pub fn decode_string(pointer: &mut usize, buf: &Vec<u8>) -> Result<String, ParseError> {
+    let string_len = get_string_len(pointer, buf)?;
+
+    if string_len == 0 {
+        return Ok("".to_string());
+    }
+
+    let string_len = string_len + *pointer;
     let slice: &[u8] = &buf[*pointer..string_len];
 
+    // Place pointer at the byte after the string (after the last char)
     *pointer = string_len;
 
     Ok(parse_to_utf8(slice)?)
 }
 
 pub fn decode_int(pointer: &mut usize, buf: &Vec<u8>) -> Result<u32, ParseError> {
-    let mut int_len_bytes = Vec::new();
+    let mut int_bytes = Vec::new();
 
+    // Place pointer at start of int (after "i")
     *pointer += 1;
 
     while buf[*pointer] != END_OF_TYPE {
-        int_len_bytes.push(buf[*pointer]);
+        int_bytes.push(buf[*pointer]);
         *pointer += 1;
     }
 
+    // Place pointer at end of type (after "e")
     *pointer += 1;
 
-    Ok(parse_to_usize(&int_len_bytes)? as u32)
+    Ok(parse_to_usize(&int_bytes)? as u32)
 }
 
 pub fn decode_list(pointer: &mut usize, buf: &Vec<u8>) -> Result<Vec<BencodeTypes>, ParseError> {
     let mut list: Vec<BencodeTypes> = Vec::new();
 
+    // Place pointer at start of list (after "l")
     *pointer += 1;
 
     while buf[*pointer] != END_OF_TYPE {
@@ -83,27 +100,16 @@ pub fn decode_list(pointer: &mut usize, buf: &Vec<u8>) -> Result<Vec<BencodeType
         })
     }
 
+    // Place pointer at end of type (after "e")
     *pointer += 1;
 
     Ok(list)
 }
 
-fn get_hash(slice: &[u8]) -> Result<[u8; 20], ParseError> {
-    let mut hasher = Sha1::new();
-    hasher.update(slice);
-    Ok(hasher.finalize().into())
-}
-
 pub fn decode_pieces(pointer: &mut usize, buf: &Vec<u8>) -> Result<Vec<[u8; 20]>, ParseError> {
-    let mut pieces_len_bytes = Vec::new();
+    let pieces_len = get_string_len(pointer, buf)?;
 
-    while buf[*pointer] != STRING_DELIM {
-        pieces_len_bytes.push(buf[*pointer]);
-        *pointer += 1;
-    }
-    *pointer += 1;
-
-    let pieces_len = parse_to_usize(&pieces_len_bytes)? + *pointer;
+    let pieces_len = pieces_len + *pointer;
 
     let pieces_vec: Vec<[u8; 20]> = buf[*pointer..pieces_len]
         .chunks_exact(20)
@@ -116,6 +122,7 @@ pub fn decode_pieces(pointer: &mut usize, buf: &Vec<u8>) -> Result<Vec<[u8; 20]>
         })
         .collect();
 
+    // Place pointer at the byte after the string (after the last char)
     *pointer = pieces_len;
 
     Ok(pieces_vec)
@@ -127,28 +134,30 @@ fn decode_peers(pointer: &mut usize, buf: &Vec<u8>) -> Result<BencodeTypes, Pars
         return Ok(BencodeTypes::List(decoded));
     }
 
-    let mut peers_len_bytes = Vec::new();
+    let peers_len = get_string_len(pointer, buf)?;
 
-    while buf[*pointer] != STRING_DELIM {
-        peers_len_bytes.push(buf[*pointer]);
-        *pointer += 1;
-    }
-    *pointer += 1;
-
-    let peers_len = parse_to_usize(&peers_len_bytes)? + *pointer;
+    let peers_len = peers_len + *pointer;
 
     let peers_vec: Vec<(Ipv4Addr, u16)> = buf[*pointer..peers_len]
         .chunks_exact(6)
         .map(|item| {
-            let ip = Ipv4Addr::new(item[0], item[1], item[2], item[3]);
-            let port = u16::from_be_bytes([item[4], item[5]]);
-            (ip, port)
+            (
+                Ipv4Addr::new(item[0], item[1], item[2], item[3]),
+                u16::from_be_bytes([item[4], item[5]]),
+            )
         })
         .collect();
 
+    // Place pointer at the byte after the string (after the last char)
     *pointer = peers_len;
 
     Ok(BencodeTypes::PeersCompact(peers_vec))
+}
+
+fn get_hash(slice: &[u8]) -> Result<[u8; 20], ParseError> {
+    let mut hasher = Sha1::new();
+    hasher.update(slice);
+    Ok(hasher.finalize().into())
 }
 
 pub fn decode_dict(
@@ -161,6 +170,7 @@ pub fn decode_dict(
 
     let mut dict: HashMap<String, BencodeTypes> = HashMap::new();
 
+    // Place pointer at start of dict (after "d")
     *pointer += 1;
 
     let mut is_key = true;
@@ -197,10 +207,10 @@ pub fn decode_dict(
     if info_hash_start != 0 {
         let slice = &buf[info_hash_start..*pointer];
         let hash = get_hash(slice)?;
-
         dict.insert(String::from("info_hash"), BencodeTypes::InfoHash(hash));
     }
 
+    // Place pointer at end of type (after "e")
     *pointer += 1;
 
     Ok(dict)
