@@ -1,5 +1,5 @@
 use core::str;
-use std::{collections::HashMap, net::Ipv4Addr, process::exit};
+use std::{collections::HashMap, process::exit};
 
 use sha1::{Digest, Sha1};
 
@@ -19,7 +19,7 @@ pub enum BencodeTypes {
     Dict(HashMap<String, BencodeTypes>),
     InfoHash([u8; 20]),
     Pieces(Vec<[u8; 20]>),
-    PeersCompact(Vec<(Ipv4Addr, u16)>),
+    PeersCompact(Vec<((u8, u8, u8, u8), u16)>),
 }
 
 fn parse_to_utf8(slice: &[u8]) -> Result<String, ParseError> {
@@ -138,11 +138,11 @@ fn decode_peers(pointer: &mut usize, buf: &Vec<u8>) -> Result<BencodeTypes, Pars
 
     let peers_len = peers_len + *pointer;
 
-    let peers_vec: Vec<(Ipv4Addr, u16)> = buf[*pointer..peers_len]
+    let peers_vec = buf[*pointer..peers_len]
         .chunks_exact(6)
         .map(|item| {
             (
-                Ipv4Addr::new(item[0], item[1], item[2], item[3]),
+                (item[0], item[1], item[2], item[3]),
                 u16::from_be_bytes([item[4], item[5]]),
             )
         })
