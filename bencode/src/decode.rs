@@ -16,7 +16,7 @@ pub type Peers = Vec<((u8, u8, u8, u8), u16)>;
 #[derive(Debug, PartialEq)]
 pub enum BencodeTypes {
     String(String),
-    Integer(u32),
+    Integer(u64),
     List(Vec<BencodeTypes>),
     Dict(HashMap<String, BencodeTypes>),
     InfoHash([u8; 20]),
@@ -69,7 +69,7 @@ pub fn decode_string(pointer: &mut usize, buf: &Vec<u8>) -> Result<String, Parse
     Ok(parse_to_utf8(slice)?)
 }
 
-pub fn decode_int(pointer: &mut usize, buf: &Vec<u8>) -> Result<u32, ParseError> {
+pub fn decode_int(pointer: &mut usize, buf: &Vec<u8>) -> Result<u64, ParseError> {
     let mut int_bytes = Vec::new();
 
     // Place pointer at start of int (after "i")
@@ -83,7 +83,7 @@ pub fn decode_int(pointer: &mut usize, buf: &Vec<u8>) -> Result<u32, ParseError>
     // Place pointer at end of type (after "e")
     *pointer += 1;
 
-    Ok(parse_to_usize(&int_bytes)? as u32)
+    Ok(parse_to_usize(&int_bytes)? as u64)
 }
 
 pub fn decode_list(pointer: &mut usize, buf: &Vec<u8>) -> Result<Vec<BencodeTypes>, ParseError> {
@@ -226,7 +226,7 @@ pub fn unwrap_string(string: BencodeTypes) -> Option<String> {
     }
 }
 
-pub fn unwrap_integer(int: BencodeTypes) -> Option<u32> {
+pub fn unwrap_integer(int: BencodeTypes) -> Option<u64> {
     if let BencodeTypes::Integer(i) = int {
         Some(i)
     } else {
@@ -333,7 +333,7 @@ mod tests {
         let mut pointer = 0;
         let result = decode_int(&mut pointer, &test_vec).unwrap();
 
-        assert_eq!(5657 as u32, result);
+        assert_eq!(5657 as u64, result);
         assert_eq!(pointer, 6);
     }
 
@@ -348,7 +348,7 @@ mod tests {
         let bar = String::from("bar");
         let spam = String::from("spam");
         let foo = String::from("foo");
-        let int: u32 = 5657;
+        let int: u64 = 5657;
 
         let dict: HashMap<String, BencodeTypes> = HashMap::from([
             (bar.clone(), BencodeTypes::String(spam.clone())),
@@ -379,7 +379,7 @@ mod tests {
         let string = String::from("HelloWorld!");
         let test = String::from("test");
         let list = String::from("list");
-        let int: u32 = 42;
+        let int: u64 = 42;
 
         let dict: HashMap<String, BencodeTypes> = HashMap::from([
             (string.clone(), BencodeTypes::Integer(int)),

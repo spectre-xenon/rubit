@@ -9,8 +9,8 @@ use crate::{
 
 pub struct Info {
     pub name: String,
-    pub length: u32,
-    pub piece_length: u32,
+    pub length: u64,
+    pub piece_length: u64,
     pub pieces: Vec<[u8; 20]>,
 }
 
@@ -19,7 +19,7 @@ pub struct TorrentFile {
     pub announce: String,
     pub announce_list: Option<Vec<Vec<String>>>,
     pub created_by: Option<String>,
-    pub creation_date: Option<u32>,
+    pub creation_date: Option<u64>,
     pub encoding: Option<String>,
     pub info: Info,
 }
