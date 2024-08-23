@@ -1,7 +1,11 @@
 use core::fmt;
 use std::{collections::HashMap, process::exit};
 
-use crate::decode::{decode_dict, BencodeTypes};
+use crate::{
+    decode::{decode_dict, BencodeTypes},
+    unwrap_announce_list, unwrap_dict, unwrap_info_hash, unwrap_integer, unwrap_pieces,
+    unwrap_string,
+};
 
 pub struct Info {
     pub name: String,
@@ -13,48 +17,23 @@ pub struct Info {
 pub struct TorrentFile {
     pub info_hash: [u8; 20],
     pub announce: String,
-    pub announce_list: Vec<Vec<String>>,
+    pub announce_list: Option<Vec<Vec<String>>>,
+    pub created_by: Option<String>,
+    pub creation_date: Option<u32>,
+    pub encoding: Option<String>,
     pub info: Info,
 }
 
-fn unwrap_announce_vec(vec: Vec<BencodeTypes>) -> Vec<Vec<String>> {
-    vec.iter()
-        .map(|item| match item {
-            BencodeTypes::List(v) => v
-                .iter()
-                .map(|item| match item {
-                    BencodeTypes::String(s) => s.clone(),
-                    _ => panic!("not a String"),
-                })
-                .collect(),
-            _ => panic!("not a List"),
-        })
-        .collect()
-}
-
 fn make_torrent_file<'a>(dict: &'a mut HashMap<String, BencodeTypes>) -> Option<TorrentFile> {
-    let BencodeTypes::InfoHash(info_hash) = dict.remove("info_hash")? else {
-        return None;
-    };
-    let BencodeTypes::String(announce) = dict.remove("announce")? else {
-        return None;
-    };
+    let info_hash = unwrap_info_hash(dict.remove("info_hash")?)?;
+    let announce = unwrap_string(dict.remove("announce")?)?;
+    let mut info_dict = unwrap_dict(dict.remove("info")?)?;
 
-    let BencodeTypes::Dict(mut info_dict) = dict.remove("info")? else {
-        return None;
-    };
-    let BencodeTypes::String(name) = info_dict.remove("name")? else {
-        return None;
-    };
-    let BencodeTypes::Integer(length) = info_dict.remove("length")? else {
-        return None;
-    };
-    let BencodeTypes::Integer(piece_length) = info_dict.remove("piece length")? else {
-        return None;
-    };
-    let BencodeTypes::Pieces(pieces) = info_dict.remove("pieces")? else {
-        return None;
-    };
+    let name = unwrap_string(info_dict.remove("name")?)?;
+    let length = unwrap_integer(info_dict.remove("length")?)?;
+    let piece_length = unwrap_integer(info_dict.remove("piece length")?)?;
+    let pieces = unwrap_pieces(info_dict.remove("pieces")?)?;
+
     let info = Info {
         name,
         length,
@@ -62,16 +41,33 @@ fn make_torrent_file<'a>(dict: &'a mut HashMap<String, BencodeTypes>) -> Option<
         pieces,
     };
 
-    let BencodeTypes::List(temp_announce_list) = dict.remove("announce-list")? else {
-        return None;
+    let announce_list = match dict.remove("announce-list") {
+        Some(l) => unwrap_announce_list(l),
+        None => None,
     };
 
-    let announce_list = unwrap_announce_vec(temp_announce_list);
+    let created_by = match dict.remove("created by") {
+        Some(s) => unwrap_string(s),
+        None => None,
+    };
+
+    let creation_date = match dict.remove("creation date") {
+        Some(i) => unwrap_integer(i),
+        None => None,
+    };
+
+    let encoding = match dict.remove("encoding") {
+        Some(s) => unwrap_string(s),
+        None => None,
+    };
 
     Some(TorrentFile {
         info_hash,
         announce,
         announce_list,
+        created_by,
+        creation_date,
+        encoding,
         info,
     })
 }
