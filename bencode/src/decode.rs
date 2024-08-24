@@ -1,7 +1,7 @@
 use core::str;
 use std::{collections::HashMap, process::exit};
 
-use sha1::{Digest, Sha1};
+use openssl::sha::Sha1;
 
 use crate::errors::ParseError;
 
@@ -159,7 +159,7 @@ fn decode_peers(pointer: &mut usize, buf: &Vec<u8>) -> Result<BencodeTypes, Pars
 fn get_hash(slice: &[u8]) -> Result<[u8; 20], ParseError> {
     let mut hasher = Sha1::new();
     hasher.update(slice);
-    Ok(hasher.finalize().into())
+    Ok(hasher.finish().into())
 }
 
 pub fn decode_dict(
