@@ -1,10 +1,12 @@
+use std::io::{Seek, SeekFrom};
 use std::{
     collections::{HashSet, VecDeque},
+    fs::File,
     io::{self, Read, Write},
     net::{SocketAddr, TcpStream},
     sync::{Arc, Mutex},
     thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use bencode::TorrentFile;
@@ -41,6 +43,7 @@ impl PeerConnManager {
         socket_addr: SocketAddr,
         torrent_file: Arc<TorrentFile>,
         peer_id: [u8; 20],
+        file: Arc<Mutex<File>>,
     ) -> io::Result<()> {
         // connect or else remove address from peers HashSet
         let Ok(mut stream) = TcpStream::connect_timeout(&socket_addr, Duration::from_secs(2))
@@ -50,7 +53,7 @@ impl PeerConnManager {
             return Ok(());
         };
 
-        stream.set_read_timeout(Some(Duration::from_secs(1)))?;
+        stream.set_read_timeout(Some(Duration::from_secs(10)))?;
 
         println!("connected to peer {}", socket_addr);
 
@@ -90,6 +93,7 @@ impl PeerConnManager {
                         }
                     }
                 }
+
                 is_handshake = false;
                 thread::sleep(Duration::from_millis(1));
             }
@@ -126,7 +130,6 @@ impl PeerConnManager {
                 let blocks = torrent_file.info.piece_length / 16384;
 
                 let mut buf: Vec<u8> = Vec::new();
-                buf.resize(torrent_file.info.piece_length as usize, 0);
 
                 let mut hasher = Sha1::new();
                 for i in 0..blocks {
@@ -141,21 +144,33 @@ impl PeerConnManager {
 
                     let block = self.read_stream(&mut stream)?;
                     if block[0] == 7 {
-                        let rec_begin = u32::from_be_bytes(block[5..9].try_into().unwrap());
-                        // println!("curr begin: {}", i * 16384);
-
-                        // println!("rec begin: {}", rec_begin);
                         buf.write_all(&block[9..])?;
+                        println!("got block {} from {}", i, socket_addr);
+                        println!("block: {:?}", block.len());
                         hasher.update(&block[9..]);
-                        println!("got block num {} from {}", i, socket_addr);
                         thread::sleep(Duration::from_millis(1))
                     }
                 }
 
                 let hash = hasher.finish();
 
-                println!("org_hash: {:?}", torrent_file.info.pieces[piece_index]);
-                println!("rec_hash: {:?}", hash);
+                if torrent_file.info.pieces[piece_index] == hash {
+                    let mut file = file.lock().unwrap();
+                    file.seek(SeekFrom::Start(
+                        piece_index as u64 * torrent_file.info.piece_length,
+                    ))
+                    .unwrap();
+                    file.write(&buf).unwrap();
+
+                    std::mem::drop(file);
+
+                    println!("wrote piece {} to disk!", piece_index);
+                } else {
+                    let mut queue = global_queue.lock().unwrap();
+                    queue.push_back(piece_index);
+                    std::mem::drop(queue);
+                }
+                thread::sleep(Duration::from_millis(1))
             }
         }
     }
@@ -179,6 +194,7 @@ impl PeerConnManager {
     }
 
     fn read_stream(&self, stream: &mut TcpStream) -> io::Result<Vec<u8>> {
+        #[allow(unused_assignments)]
         let mut len_prefix2 = [0; 4];
 
         loop {

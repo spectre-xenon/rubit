@@ -1,5 +1,6 @@
 use std::{
     collections::{HashSet, VecDeque},
+    fs::File,
     net::SocketAddr,
     sync::{Arc, Mutex},
     thread::{self, JoinHandle},
@@ -26,6 +27,7 @@ impl PeerManager {
         socket_addr: SocketAddr,
         torrent_file: Arc<TorrentFile>,
         peer_id: [u8; 20],
+        file: Arc<Mutex<File>>,
     ) -> Option<JoinHandle<()>> {
         let mut set = self.peers.lock().unwrap();
 
@@ -40,6 +42,7 @@ impl PeerManager {
                         socket_addr,
                         torrent_file,
                         peer_id,
+                        file,
                     )
                     .unwrap_or(());
             }))
