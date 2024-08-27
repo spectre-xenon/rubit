@@ -1,7 +1,6 @@
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::VecDeque,
     fs::{self, File},
-    io::{Read, Seek, SeekFrom},
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     process::exit,
     sync::{Arc, Mutex},
@@ -11,27 +10,16 @@ use std::{
 
 use bencode::TorrentFile;
 use indicatif::{ProgressBar, ProgressStyle};
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use rubit::{AnnounceConfig, FailureResponse, PeerManager, Responses, Tracker};
-use sha1::{Digest, Sha1};
+use rand::{thread_rng, Rng};
+use rubit::{
+    check_download_percent, get_random_id, get_tracker_list, retain_not_downloaded_pieces,
+    AnnounceConfig, FailureResponse, PeerManager, Responses,
+};
 
 use rand::seq::SliceRandom;
 
-use url::Url;
-
-fn get_random_id() -> String {
-    let mut peer_id = String::from("RB01-");
-    let random_15: String = thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(15)
-        .map(char::from)
-        .collect();
-    peer_id.push_str(&random_15);
-    peer_id
-}
-
 fn main() {
-    let file_buf = fs::read("test.torrent").unwrap();
+    let file_buf = fs::read("test7.torrent").unwrap();
     let torrent_file = TorrentFile::from(file_buf);
 
     let piece_num = torrent_file.info.pieces.len();
@@ -193,71 +181,4 @@ fn main() {
     for handle in handles {
         handle.join().unwrap();
     }
-}
-
-fn get_tracker_list(announce: String, announce_list: Vec<Vec<String>>) -> Vec<Tracker> {
-    let mut flattened_list: Vec<&String> = announce_list.iter().flatten().collect();
-    flattened_list.push(&announce);
-
-    let mut vec = Vec::new();
-
-    for url in flattened_list {
-        let parsed = match Url::parse(&url) {
-            Ok(u) => u,
-            Err(_) => continue,
-        };
-        let tracker = match Tracker::new(parsed) {
-            Ok(t) => t,
-            Err(_) => continue,
-        };
-
-        vec.push(tracker);
-    }
-    vec
-}
-
-fn check_download_percent(
-    file: Arc<Mutex<File>>,
-    pieces: &Vec<[u8; 20]>,
-    total_length: u64,
-    piece_len: u64,
-) -> HashSet<usize> {
-    println!("File already exists, checking downloaded hashes...");
-
-    let mut file = file.lock().unwrap();
-    if file.seek(SeekFrom::End(0)).unwrap() == 0 {
-        return HashSet::new();
-    }
-
-    let mut completed = HashSet::new();
-    let mut cursor = 0;
-
-    for i in 0..pieces.len() {
-        let mut buf = Vec::new();
-        if i == pieces.len() - 1 {
-            buf.resize((total_length % piece_len) as usize, 0);
-        } else {
-            buf.resize(piece_len as usize, 0);
-        }
-        let mut hasher = Sha1::new();
-
-        file.seek(SeekFrom::Start(cursor)).unwrap();
-        file.read(&mut buf).unwrap();
-
-        hasher.update(&buf);
-        let hash: [u8; 20] = hasher.finalize().into();
-
-        if hash == pieces[i] {
-            completed.insert(i);
-        }
-
-        cursor += piece_len;
-    }
-
-    completed
-}
-
-fn retain_not_downloaded_pieces(completed: HashSet<usize>, mut buf: Vec<usize>) -> Vec<usize> {
-    buf.retain(|e| !completed.contains(e));
-    buf
 }
