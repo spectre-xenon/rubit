@@ -442,6 +442,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rubit-cli"
+version = "0.1.0"
+dependencies = [
+ "bencode",
+ "indicatif",
+ "rand",
+ "rubit",
+ "sha1",
+ "url",
+]
+
+[[package]]
 name = "rustix"
 version = "0.38.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
