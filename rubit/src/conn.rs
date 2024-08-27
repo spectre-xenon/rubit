@@ -10,7 +10,7 @@ use std::{
 };
 
 use bencode::TorrentFile;
-use openssl::sha::Sha1;
+use sha1::{Digest, Sha1};
 
 use crate::{HandShake, Message};
 
@@ -53,51 +53,59 @@ impl PeerConnManager {
             return Ok(());
         };
 
-        stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+        stream.set_read_timeout(Some(Duration::from_secs(2)))?;
 
-        println!("connected to peer {}", socket_addr);
+        // println!("connected to peer {}", socket_addr);
 
-        let mut is_handshake = true;
         let mut peer_pieces = HashSet::new();
 
-        loop {
-            if is_handshake {
-                let handshake_bytes = HandShake::new(torrent_file.info_hash, peer_id).as_bytes()?;
+        {
+            let handshake_bytes = HandShake::new(torrent_file.info_hash, peer_id).as_bytes()?;
 
-                stream.write(&handshake_bytes)?;
+            stream.write(&handshake_bytes)?;
 
-                // Size of handshake = 68 bytes
-                let mut handshake_buf = [0u8; 68];
+            // Size of handshake = 68 bytes
+            let mut handshake_buf = [0u8; 68];
 
-                loop {
-                    stream.read_exact(&mut handshake_buf)?;
-                    if handshake_buf != [0u8; 68] {
+            loop {
+                stream.read_exact(&mut handshake_buf)?;
+                if handshake_buf != [0u8; 68] {
+                    break;
+                }
+            }
+
+            if handshake_bytes[28..48] != handshake_buf[28..48] {
+                return Ok(());
+            }
+
+            // listen until choke message
+            loop {
+                match self.read_stream(&mut stream) {
+                    Ok(buf) => match buf[0] {
+                        5 => {
+                            self.read_bitfield(buf, &mut peer_pieces);
+                        }
+                        4 => {
+                            self.read_have(buf, &mut peer_pieces);
+                        }
+                        1 => {
+                            self.state = State::UnChoked;
+                            break;
+                        }
+                        _ => break,
+                    },
+                    Err(_) => {
                         break;
                     }
                 }
-
-                if handshake_bytes[28..48] != handshake_buf[28..48] {
-                    return Ok(());
-                }
-
-                // listen until choke message
-                loop {
-                    match self.read_stream(&mut stream) {
-                        Ok(buf) => match buf[0] {
-                            5 => self.read_bitfield(buf, &mut peer_pieces),
-                            4 => self.read_have(buf, &mut peer_pieces),
-                            _ => break,
-                        },
-                        Err(_) => {
-                            break;
-                        }
-                    }
-                }
-
-                is_handshake = false;
-                thread::sleep(Duration::from_millis(1));
             }
 
+            thread::sleep(Duration::from_millis(1));
+        }
+
+        stream.set_read_timeout(None)?;
+
+        loop {
             if self.my_state == State::None {
                 stream.write(&Message::Interested.as_bytes()?)?;
                 self.my_state = State::Interested;
@@ -106,6 +114,7 @@ impl PeerConnManager {
             if self.state == State::Choked {
                 loop {
                     let buf = self.read_stream(&mut stream)?;
+                    // println!("got unchoke!");
                     if buf[0] == 1 {
                         self.state = State::UnChoked;
                         break;
@@ -117,60 +126,98 @@ impl PeerConnManager {
                 let mut queue = global_queue.lock().unwrap();
                 let piece_index = match queue.pop_front() {
                     Some(i) => i,
-                    None => return Ok(()),
+                    None => {
+                        // println!("empty queue! returing..");
+                        let mut set = peers.lock().unwrap();
+                        set.remove(&socket_addr);
+                        stream.write(&Message::NotInterested.as_bytes()?)?;
+                        return Ok(());
+                    }
                 };
 
                 if !peer_pieces.contains(&piece_index) {
                     queue.push_back(piece_index);
+                    std::mem::drop(queue);
+                    thread::sleep(Duration::from_millis(1));
                     continue;
                 }
 
+                peer_pieces.remove(&piece_index);
+
                 std::mem::drop(queue);
 
-                let blocks = torrent_file.info.piece_length / 16384;
+                let piece_len = if piece_index == torrent_file.info.pieces.len() - 1
+                    && torrent_file.info.length % torrent_file.info.piece_length != 0
+                {
+                    (torrent_file.info.length % torrent_file.info.piece_length) as usize
+                } else {
+                    torrent_file.info.piece_length as usize
+                };
+
+                let block_len = match piece_len {
+                    n if n < 16384 => piece_len,
+                    _ => 16384,
+                };
+
+                let num_blocks = if piece_len % block_len == 0 {
+                    (piece_len / block_len) as usize
+                } else {
+                    (piece_len as f64 / block_len as f64).ceil() as usize
+                };
 
                 let mut buf: Vec<u8> = Vec::new();
-
                 let mut hasher = Sha1::new();
-                for i in 0..blocks {
+
+                for i in 0..num_blocks {
+                    let len = if i == num_blocks - 1 && piece_len % block_len != 0 {
+                        piece_len % block_len
+                    } else {
+                        block_len
+                    };
+
                     stream.write(
                         &Message::Request {
                             index: piece_index as u32,
-                            begin: (i * 16384) as u32,
-                            length: 16384,
+                            begin: (i * block_len) as u32,
+                            length: len as u32,
                         }
                         .as_bytes()?,
                     )?;
-
-                    let block = self.read_stream(&mut stream)?;
-                    if block[0] == 7 {
-                        buf.write_all(&block[9..])?;
-                        println!("got block {} from {}", i, socket_addr);
-                        println!("block: {:?}", block.len());
-                        hasher.update(&block[9..]);
-                        thread::sleep(Duration::from_millis(1))
+                    loop {
+                        let block = self.read_stream(&mut stream)?;
+                        if block[0] == 7 {
+                            buf.write_all(&block[9..])?;
+                            hasher.update(&block[9..]);
+                            // println!("got block {} from {}", i, socket_addr);
+                            break;
+                        } else if block[0] == 0 {
+                            self.state = State::Choked;
+                            self.push_back_to_queue(&global_queue, &mut peer_pieces, piece_index);
+                            break;
+                        }
+                        thread::sleep(Duration::from_millis(1));
                     }
                 }
 
-                let hash = hasher.finish();
+                let hash: [u8; 20] = hasher.finalize().into();
+
+                // println!("rec hash: {:?}", hash);
+                // println!("org hash: {:?}", torrent_file.info.pieces[piece_index]);
 
                 if torrent_file.info.pieces[piece_index] == hash {
                     let mut file = file.lock().unwrap();
                     file.seek(SeekFrom::Start(
-                        piece_index as u64 * torrent_file.info.piece_length,
-                    ))
-                    .unwrap();
-                    file.write(&buf).unwrap();
+                        piece_index as u64 * torrent_file.info.piece_length as u64,
+                    ))?;
+                    file.write(&buf)?;
 
                     std::mem::drop(file);
 
-                    println!("wrote piece {} to disk!", piece_index);
+                    // println!("wrote piece {} to disk!", piece_index);
                 } else {
-                    let mut queue = global_queue.lock().unwrap();
-                    queue.push_back(piece_index);
-                    std::mem::drop(queue);
+                    self.push_back_to_queue(&global_queue, &mut peer_pieces, piece_index);
                 }
-                thread::sleep(Duration::from_millis(1))
+                thread::sleep(Duration::from_millis(1));
             }
         }
     }
@@ -193,7 +240,7 @@ impl PeerConnManager {
         peer_pieces.insert(u32::from_be_bytes(buf[1..5].try_into().unwrap()) as usize);
     }
 
-    fn read_stream(&self, stream: &mut TcpStream) -> io::Result<Vec<u8>> {
+    fn read_stream(&self, stream: &mut impl Read) -> io::Result<Vec<u8>> {
         #[allow(unused_assignments)]
         let mut len_prefix2 = [0; 4];
 
@@ -209,7 +256,7 @@ impl PeerConnManager {
         let num = u32::from_be_bytes(len_prefix2) as usize;
 
         if num == 0 {
-            return Ok(vec![0]);
+            return Ok(vec![9]);
         }
 
         let mut buf = Vec::new();
@@ -222,5 +269,17 @@ impl PeerConnManager {
             }
         }
         Ok(buf)
+    }
+
+    fn push_back_to_queue(
+        &self,
+        queue: &Arc<Mutex<VecDeque<usize>>>,
+        peer_pieces: &mut HashSet<usize>,
+        value: usize,
+    ) {
+        let mut queue = queue.lock().unwrap();
+        queue.push_back(value);
+        peer_pieces.insert(value);
+        std::mem::drop(queue);
     }
 }
