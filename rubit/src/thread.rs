@@ -11,7 +11,7 @@ use bencode::TorrentFile;
 use crate::PeerConnManager;
 
 pub struct PeerManager {
-    peers: Arc<Mutex<HashSet<SocketAddr>>>,
+    pub peers: Arc<Mutex<HashSet<SocketAddr>>>,
 }
 
 impl PeerManager {
