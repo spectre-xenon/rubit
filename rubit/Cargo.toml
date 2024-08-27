@@ -8,4 +8,5 @@ bencode = { path = "../bencode" }
 rand = "0.8.5"
 ureq = { version = "2.10.1", features = ["native-tls"] }
 url = "2.5.2"
-openssl = "0.10.66"
+sha1 = "0.10.6"
+indicatif = "0.17.8"
