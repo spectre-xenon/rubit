@@ -6,7 +6,7 @@ description = "The bencoding decoding package for rubit Bittorrent client"
 license-file = "LICENSE.txt"
 
 [dependencies]
-rubit-bencode = { path = "../rubit-bencode" }
+rubit-bencode = { path = "../rubit-bencode", version = "0.1.0" }
 rand = "0.8.5"
 ureq = { version = "2.10.1", features = ["native-tls"] }
 url = "2.5.2"

@@ -6,8 +6,8 @@ description = "The rubit Bittorrent client cli binary"
 license-file = "LICENSE.txt"
 
 [dependencies]
-rubit = { path = "../rubit" }
-rubit-bencode = { path = "../rubit-bencode" }
+rubit = { path = "../rubit", version = "0.1.0" }
+rubit-bencode = { path = "../rubit-bencode", version = "0.1.0" }
 url = "2.5.2"
 sha1 = "0.10.6"
 indicatif = "0.17.8"
