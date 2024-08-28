@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 
-use bencode::TorrentFile;
+use rubit_bencode::TorrentFile;
 use sha1::{Digest, Sha1};
 
 use crate::{HandShake, Message};

@@ -6,7 +6,8 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-use bencode::TorrentFile;
+
+use rubit_bencode::TorrentFile;
 
 use crate::PeerConnManager;
 

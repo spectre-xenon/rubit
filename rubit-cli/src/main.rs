@@ -7,7 +7,6 @@ use std::{
     time::{self, Duration},
 };
 
-use bencode::TorrentFile;
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use rand::thread_rng;
@@ -17,6 +16,7 @@ use rubit::{
 };
 
 use rand::seq::SliceRandom;
+use rubit_bencode::TorrentFile;
 
 /// Simple Bittorrent client capable of downloading meta-info (.torrent) files,
 /// Writen in Rust!

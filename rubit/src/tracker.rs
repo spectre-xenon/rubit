@@ -6,13 +6,13 @@ use std::{
     time::Duration,
 };
 
-use bencode::{decode_dict, unwrap_integer, unwrap_peers, unwrap_string, Peers};
 use rand::{random, thread_rng, Rng};
+use rubit_bencode::{decode_dict, unwrap_integer, unwrap_peers, unwrap_string, Peers};
 use url::{form_urlencoded, Url};
 
 #[derive(Debug)]
 pub enum TrackerError {
-    Bencode(bencode::ParseError),
+    Bencode(rubit_bencode::ParseError),
     Http(ureq::Error),
     Io(io::Error),
     Slice(TryFromSliceError),
@@ -23,8 +23,8 @@ pub enum TrackerError {
     MissMatchTransactionId,
 }
 
-impl From<bencode::ParseError> for TrackerError {
-    fn from(value: bencode::ParseError) -> Self {
+impl From<rubit_bencode::ParseError> for TrackerError {
+    fn from(value: rubit_bencode::ParseError) -> Self {
         Self::Bencode(value)
     }
 }

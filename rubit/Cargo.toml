@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bencode = { path = "../bencode" }
+rubit-bencode = { path = "../rubit-bencode" }
 rand = "0.8.5"
 ureq = { version = "2.10.1", features = ["native-tls"] }
 url = "2.5.2"

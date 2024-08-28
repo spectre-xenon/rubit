@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 rubit = { path = "../rubit" }
-bencode = { path = "../bencode" }
+rubit-bencode = { path = "../rubit-bencode" }
 url = "2.5.2"
 sha1 = "0.10.6"
 indicatif = "0.17.8"
