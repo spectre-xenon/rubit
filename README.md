@@ -57,6 +57,7 @@ And finally if you find the download speed too slow you can us the `-i` flag to 
   - [x] handle a global queue of peices and HashSet of peers
 - [x] File-system
   - [x] handle writing different pieces at different offsets correclty
+  - [x] read hashes of already existing file and remove good pieces from the queue
   - [ ] Multi-file writing
 - [x] Main cli binar
   - [x] beautify with a simple nice progress bar
