@@ -1,6 +1,6 @@
 [package]
 name = "rubit-cli"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
@@ -10,3 +10,4 @@ url = "2.5.2"
 sha1 = "0.10.6"
 indicatif = "0.17.8"
 rand = "0.8.5"
+clap = { version = "4.5.16", features = ["derive"] }

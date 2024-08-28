@@ -4,13 +4,13 @@ use std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     process::exit,
     sync::{Arc, Mutex},
-    thread,
     time::{self, Duration},
 };
 
 use bencode::TorrentFile;
+use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
-use rand::{thread_rng, Rng};
+use rand::thread_rng;
 use rubit::{
     check_download_percent, get_random_id, get_tracker_list, retain_not_downloaded_pieces,
     AnnounceConfig, FailureResponse, PeerManager, Responses,
@@ -18,19 +18,57 @@ use rubit::{
 
 use rand::seq::SliceRandom;
 
+/// Simple Bittorrent client capable of downloading meta-info (.torrent) files,
+/// Writen in Rust!
+#[derive(Parser, Debug)]
+#[command(version, about)]
+struct Args {
+    /// Path of the .torrent file to download
+    #[arg(short = 't', long)]
+    torrent_file: String,
+    /// [Optional] Output file Path [default: the directory rubit was run in ]
+    #[arg(short = 'o', long)]
+    out: Option<String>,
+    /// [Optional] The interval to re-announce on in Secs\n
+    /// Some trackers return long intervals e.g. 30min
+    /// You can set this option to something like 30s to get more peers
+    #[arg(short = 'i', long)]
+    interval: Option<u64>,
+}
+
 fn main() {
-    let file_buf = fs::read("test7.torrent").unwrap();
+    let args = Args::parse();
+
+    let file_buf = match fs::read(args.torrent_file) {
+        Ok(f) => f,
+        Err(e) => {
+            println!("failed to read torrent file with Err: {}", e);
+            exit(1)
+        }
+    };
+
     let torrent_file = TorrentFile::from(file_buf);
 
     let piece_num = torrent_file.info.pieces.len();
 
+    let path_string = match args.out {
+        Some(s) => &s.clone(),
+        None => &torrent_file.info.name,
+    };
+
     let file = Arc::new(Mutex::new(
-        File::options()
+        match File::options()
             .write(true)
             .read(true)
             .create(true)
-            .open(&torrent_file.info.name)
-            .unwrap(),
+            .open(path_string)
+        {
+            Ok(f) => f,
+            Err(e) => {
+                println!("failed to create file with Err: {}", e);
+                exit(1)
+            }
+        },
     ));
 
     let completed = check_download_percent(
@@ -41,6 +79,8 @@ fn main() {
     );
 
     let progress_bar = ProgressBar::new(100);
+    let poll_duration = Duration::from_millis(250);
+    let mut poll_instant = time::Instant::now();
 
     progress_bar.set_style(
         ProgressStyle::with_template("[{elapsed_precise}] {wide_bar:.cyan/blue} {pos}% {msg:>7}")
@@ -76,12 +116,10 @@ fn main() {
     };
 
     let tracker_list = get_tracker_list(torrent_file.announce.clone(), announce_list);
+    let mut current_tracker_index = 0;
 
     let mut announce_instant = time::Instant::now();
     let mut duration = Duration::from_millis(1);
-
-    let poll_duration = Duration::from_millis(250);
-    let mut poll_instant = time::Instant::now();
 
     let shared_torrent_file = Arc::new(torrent_file);
     let mut handles = Vec::new();
@@ -99,16 +137,24 @@ fn main() {
             poll_instant = time::Instant::now();
         }
 
-        let set = peer_manager.peers.lock().unwrap();
-        if set.len() > 30 {
+        let queue = global_queue.lock().unwrap();
+        let peers = peer_manager.peers.lock().unwrap();
+
+        if queue.is_empty() && peers.is_empty() {
+            println!("Download finished");
+            break;
+        }
+
+        if peers.len() > 300 && !peers.is_empty() {
             continue;
         }
 
-        std::mem::drop(set);
-
-        if announce_instant.elapsed() < duration {
+        if announce_instant.elapsed() < duration && !peers.is_empty() {
             continue;
         }
+
+        std::mem::drop(queue);
+        std::mem::drop(peers);
 
         #[allow(unused)]
         let mut response: Responses = Responses::Failure(FailureResponse {
@@ -116,21 +162,22 @@ fn main() {
         });
 
         loop {
-            match tracker_list[thread_rng().gen_range(0..tracker_list.len())].announce(
-                AnnounceConfig {
-                    info_hash: shared_torrent_file.info_hash,
-                    downloaded: 0,
-                    left: shared_torrent_file.info.length,
-                    uploaded: 0,
-                    peer_id: peer_id.to_string(),
-                    port: 6881,
-                },
-            ) {
+            match tracker_list[current_tracker_index].announce(AnnounceConfig {
+                info_hash: shared_torrent_file.info_hash,
+                downloaded: 0,
+                left: shared_torrent_file.info.length,
+                uploaded: 0,
+                peer_id: peer_id.to_string(),
+                port: 6881,
+            }) {
                 Ok(r) => {
                     response = r;
                     break;
                 }
-                Err(_) => continue,
+                Err(_) => {
+                    current_tracker_index += 1;
+                    continue;
+                }
             };
         }
 
@@ -142,10 +189,15 @@ fn main() {
             }
         };
 
-        duration = match result.min_interval {
-            Some(i) => i,
-            None => result.interval,
-        };
+        if let Some(d) = args.interval {
+            duration = Duration::from_secs(d)
+        } else {
+            duration = match result.min_interval {
+                Some(i) => i,
+                None => result.interval,
+            };
+        }
+
         announce_instant = time::Instant::now();
 
         for (octets, port) in result.peers {
@@ -169,13 +221,6 @@ fn main() {
                 None => (),
             }
         }
-
-        let queue = global_queue.lock().unwrap();
-        if queue.is_empty() {
-            break;
-        }
-        std::mem::drop(queue);
-        thread::sleep(Duration::from_millis(1));
     }
 
     for handle in handles {
