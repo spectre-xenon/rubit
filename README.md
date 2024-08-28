@@ -1,4 +1,3 @@
-<!-- PROJECT LOGO -->
 <div align="center">
 
   <h3 align="center">Rubit</h3>
@@ -9,15 +8,11 @@
   </p>
 </div>
 
-<!-- ABOUT THE PROJECT -->
-
 ## About The Project
 
 So, I was feeling kind of geeky one day and decided I wanted to really get how the internet works under the hood. I'm always down to learn something new, and messing around with a low-levelish language sounded like fun. That's when it hit me—why not try building a BitTorrent client with Rust?
 
- It's not perfect (yet!), but let me tell you, this whole thing has been a wild ride through the awesome (and sometimes confusing) world of bytes and streams!
-
-<!-- GETTING STARTED -->
+It's not perfect (yet!), but let me tell you, this whole thing has been a wild ride through the awesome (and sometimes confusing) world of bytes and streams!
 
 ## Installation
 
@@ -45,8 +40,6 @@ rubit -t <path to .torrent file> -o ~/Download/test.mkv
 
 And finally if you find the download speed too slow you can us the `-i` flag to change the interval (in Seconds) at which the client requests new peers from the tracker
 
-<!-- ROADMAP -->
-
 ## Roadmap / Features
 
 - [x] Decode Bencode
@@ -68,9 +61,6 @@ And finally if you find the download speed too slow you can us the `-i` flag to 
 - [x] Main cli binar
   - [x] beautify with a simple nice progress bar
 
-
-<!-- CONTRIBUTING -->
-
 ## Contributing
 
 If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue.
@@ -82,10 +72,6 @@ Don't forget to give the project a star! Thanks again!
 4. Push to the Branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-<!-- LICENSE -->
-
 ## License
 
 Distributed under the MIT License. See `LICENSE.txt` for more information.
-
-
