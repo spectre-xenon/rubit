@@ -2,6 +2,8 @@
 name = "rubit"
 version = "0.1.0"
 edition = "2021"
+description = "The bencoding decoding package for rubit Bittorrent client"
+license-file = "LICENSE.txt"
 
 [dependencies]
 rubit-bencode = { path = "../rubit-bencode" }

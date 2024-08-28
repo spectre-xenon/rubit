@@ -2,6 +2,8 @@
 name = "rubit-cli"
 version = "0.2.0"
 edition = "2021"
+description = "The rubit Bittorrent client cli binary"
+license-file = "LICENSE.txt"
 
 [dependencies]
 rubit = { path = "../rubit" }

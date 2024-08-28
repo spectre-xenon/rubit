@@ -2,6 +2,8 @@
 name = "rubit-bencode"
 version = "0.1.0"
 edition = "2021"
+description = "The rubit Bittorrent client core lib for all its functions"
+license-file = "LICENSE.txt"
 
 [dependencies]
 sha1 = "0.10.6"
