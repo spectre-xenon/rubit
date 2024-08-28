@@ -14,6 +14,18 @@ use sha1::{Digest, Sha1};
 
 use crate::{HandShake, Message};
 
+pub enum ConnError {
+    Io(io::Error),
+    TimeOut,
+    EmptyQueue,
+}
+
+impl From<io::Error> for ConnError {
+    fn from(value: io::Error) -> Self {
+        Self::Io(value)
+    }
+}
+
 #[derive(PartialEq)]
 pub enum State {
     Choked,
@@ -39,20 +51,18 @@ impl PeerConnManager {
     pub fn handle_peer(
         &mut self,
         global_queue: Arc<Mutex<VecDeque<usize>>>,
-        peers: Arc<Mutex<HashSet<SocketAddr>>>,
         socket_addr: SocketAddr,
         torrent_file: Arc<TorrentFile>,
         peer_id: [u8; 20],
         file: Arc<Mutex<File>>,
-    ) -> io::Result<()> {
+    ) -> Result<(), ConnError> {
         // connect or else remove address from peers HashSet
         let Ok(mut stream) = TcpStream::connect_timeout(&socket_addr, Duration::from_secs(2))
         else {
-            let mut set = peers.lock().unwrap();
-            set.remove(&socket_addr);
-            return Ok(());
+            return Err(ConnError::TimeOut);
         };
 
+        // Handshake timeout
         stream.set_read_timeout(Some(Duration::from_secs(2)))?;
 
         // println!("connected to peer {}", socket_addr);
@@ -103,7 +113,8 @@ impl PeerConnManager {
             thread::sleep(Duration::from_millis(1));
         }
 
-        stream.set_read_timeout(None)?;
+        // Normal timeout: 10Secs may be too long :/
+        stream.set_read_timeout(Some(Duration::from_secs(10)))?;
 
         loop {
             if self.my_state == State::None {
@@ -128,22 +139,19 @@ impl PeerConnManager {
                     Some(i) => i,
                     None => {
                         // println!("empty queue! returing..");
-                        let mut set = peers.lock().unwrap();
-                        set.remove(&socket_addr);
                         stream.write(&Message::NotInterested.as_bytes()?)?;
-                        return Ok(());
+                        return Err(ConnError::EmptyQueue);
                     }
                 };
 
                 if !peer_pieces.contains(&piece_index) {
                     queue.push_back(piece_index);
-                    std::mem::drop(queue);
-                    thread::sleep(Duration::from_millis(1));
                     continue;
                 }
 
                 peer_pieces.remove(&piece_index);
 
+                // Release lock on queue
                 std::mem::drop(queue);
 
                 let piece_len = if piece_index == torrent_file.info.pieces.len() - 1

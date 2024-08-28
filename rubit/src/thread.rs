@@ -35,16 +35,20 @@ impl PeerManager {
             let peers_clone = Arc::clone(&self.peers);
             Some(thread::spawn(move || {
                 let mut peer_manager = PeerConnManager::new();
-                peer_manager
-                    .handle_peer(
-                        global_queue,
-                        peers_clone,
-                        socket_addr,
-                        torrent_file,
-                        peer_id,
-                        file,
-                    )
-                    .unwrap_or(());
+
+                match peer_manager.handle_peer(
+                    global_queue,
+                    socket_addr,
+                    torrent_file,
+                    peer_id,
+                    file,
+                ) {
+                    Err(_) => {
+                        let mut set = peers_clone.lock().unwrap();
+                        set.remove(&socket_addr);
+                    }
+                    _ => (),
+                };
             }))
         } else {
             None
