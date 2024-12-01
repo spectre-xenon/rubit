@@ -34,6 +34,9 @@ struct Args {
     /// You can set this option to something like 30s to get more peers
     #[arg(short = 'i', long)]
     interval: Option<u64>,
+    /// [Optional] Print extra logs, needed for development and will omit the progress bar
+    #[arg(short = 'V', long, action)]
+    verbose: bool,
 }
 
 fn main() {
@@ -125,7 +128,7 @@ fn main() {
     let mut handles = Vec::new();
 
     loop {
-        if poll_instant.elapsed() > poll_duration {
+        if poll_instant.elapsed() > poll_duration && !args.verbose {
             let queue_len = global_queue.lock().unwrap().len();
             let peers_len = peer_manager.peers.lock().unwrap().len();
             print!("\r\033[K");
@@ -214,6 +217,7 @@ fn main() {
                 torrent_file,
                 peer_id.clone().as_bytes().try_into().unwrap(),
                 file.clone(),
+                args.verbose,
             );
 
             match handle {

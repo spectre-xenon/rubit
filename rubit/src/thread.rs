@@ -6,7 +6,6 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-
 use rubit_bencode::TorrentFile;
 
 use crate::PeerConnManager;
@@ -29,6 +28,7 @@ impl PeerManager {
         torrent_file: Arc<TorrentFile>,
         peer_id: [u8; 20],
         file: Arc<Mutex<File>>,
+        verbose: bool,
     ) -> Option<JoinHandle<()>> {
         let mut set = self.peers.lock().unwrap();
 
@@ -43,6 +43,7 @@ impl PeerManager {
                     torrent_file,
                     peer_id,
                     file,
+                    verbose,
                 ) {
                     Err(_) => {
                         let mut set = peers_clone.lock().unwrap();

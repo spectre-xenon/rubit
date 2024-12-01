@@ -55,6 +55,7 @@ impl PeerConnManager {
         torrent_file: Arc<TorrentFile>,
         peer_id: [u8; 20],
         file: Arc<Mutex<File>>,
+        verbose: bool,
     ) -> Result<(), ConnError> {
         // connect or else remove address from peers HashSet
         let Ok(mut stream) = TcpStream::connect_timeout(&socket_addr, Duration::from_secs(2))
@@ -65,7 +66,9 @@ impl PeerConnManager {
         // Handshake timeout
         stream.set_read_timeout(Some(Duration::from_secs(2)))?;
 
-        // println!("connected to peer {}", socket_addr);
+        if verbose {
+            println!("connected to peer {}", socket_addr);
+        }
 
         let mut peer_pieces = HashSet::new();
 
@@ -125,7 +128,9 @@ impl PeerConnManager {
             if self.state == State::Choked {
                 loop {
                     let buf = self.read_stream(&mut stream)?;
-                    // println!("got unchoke!");
+                    if verbose {
+                        println!("got unchoke!");
+                    }
                     if buf[0] == 1 {
                         self.state = State::UnChoked;
                         break;
@@ -138,7 +143,9 @@ impl PeerConnManager {
                 let piece_index = match queue.pop_front() {
                     Some(i) => i,
                     None => {
-                        // println!("empty queue! returing..");
+                        if verbose {
+                            println!("empty queue! returing..");
+                        }
                         stream.write(&Message::NotInterested.as_bytes()?)?;
                         return Err(ConnError::EmptyQueue);
                     }
@@ -196,7 +203,9 @@ impl PeerConnManager {
                         if block[0] == 7 {
                             buf.write_all(&block[9..])?;
                             hasher.update(&block[9..]);
-                            // println!("got block {} from {}", i, socket_addr);
+                            if verbose {
+                                println!("got block {} from {}", i, socket_addr);
+                            }
                             break;
                         } else if block[0] == 0 {
                             self.state = State::Choked;
@@ -209,8 +218,10 @@ impl PeerConnManager {
 
                 let hash: [u8; 20] = hasher.finalize().into();
 
-                // println!("rec hash: {:?}", hash);
-                // println!("org hash: {:?}", torrent_file.info.pieces[piece_index]);
+                if verbose {
+                    println!("recivied hash: {:?}", hash);
+                    println!("original hash: {:?}", torrent_file.info.pieces[piece_index]);
+                }
 
                 if torrent_file.info.pieces[piece_index] == hash {
                     let mut file = file.lock().unwrap();
@@ -221,7 +232,9 @@ impl PeerConnManager {
 
                     std::mem::drop(file);
 
-                    // println!("wrote piece {} to disk!", piece_index);
+                    if verbose {
+                        println!("wrote piece {} to disk!", piece_index);
+                    }
                 } else {
                     self.push_back_to_queue(&global_queue, &mut peer_pieces, piece_index);
                 }
