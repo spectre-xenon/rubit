@@ -5,7 +5,6 @@ use std::{
     io::{self, Read, Write},
     net::{SocketAddr, TcpStream},
     sync::{Arc, Mutex},
-    thread,
     time::Duration,
 };
 
@@ -112,8 +111,6 @@ impl PeerConnManager {
                     }
                 }
             }
-
-            thread::sleep(Duration::from_millis(1));
         }
 
         // Normal timeout: 10Secs may be too long :/
@@ -212,7 +209,6 @@ impl PeerConnManager {
                             self.push_back_to_queue(&global_queue, &mut peer_pieces, piece_index);
                             break;
                         }
-                        thread::sleep(Duration::from_millis(1));
                     }
                 }
 
@@ -238,7 +234,6 @@ impl PeerConnManager {
                 } else {
                     self.push_back_to_queue(&global_queue, &mut peer_pieces, piece_index);
                 }
-                thread::sleep(Duration::from_millis(1));
             }
         }
     }
