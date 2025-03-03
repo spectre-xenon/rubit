@@ -185,9 +185,7 @@ impl Tracker {
     }
 
     fn connect_udp(&self, receiver_ip: SocketAddr) -> Result<u64, TrackerError> {
-        let port = thread_rng().gen_range(1025..u16::MAX);
-
-        let socket = UdpSocket::bind(format!("0.0.0.0:{}", port))?;
+        let socket = UdpSocket::bind("0.0.0.0:0")?;
 
         let transaction_id: u32 = random();
 
@@ -200,15 +198,7 @@ impl Tracker {
         socket.send_to(&write_buf, receiver_ip)?;
 
         let mut rec_buf = [0u8; 2048];
-        let mut retries = 0;
-
-        while retries < 5 {
-            socket.recv_from(&mut rec_buf)?;
-            if rec_buf != [0u8; 2048] {
-                break;
-            }
-            retries += 1;
-        }
+        socket.recv_from(&mut rec_buf)?;
 
         let action = u32::from_be_bytes(rec_buf[0..4].try_into()?);
         let rec_transaction_id = u32::from_be_bytes(rec_buf[4..8].try_into()?);
@@ -259,15 +249,7 @@ impl Tracker {
         socket.send_to(&write_buf, receiver_ip)?;
 
         let mut rec_buf = [0u8; 2048];
-        let mut retries = 0;
-
-        while retries < 5 {
-            socket.recv_from(&mut rec_buf)?;
-            if rec_buf != [0u8; 2048] {
-                break;
-            }
-            retries += 1;
-        }
+        socket.recv_from(&mut rec_buf)?;
 
         if rec_buf == [0u8; 2048] {}
 

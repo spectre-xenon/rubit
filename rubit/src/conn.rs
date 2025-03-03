@@ -74,17 +74,11 @@ impl PeerConnManager {
         {
             let handshake_bytes = HandShake::new(torrent_file.info_hash, peer_id).as_bytes()?;
 
-            stream.write(&handshake_bytes)?;
+            stream.write_all(&handshake_bytes)?;
 
             // Size of handshake = 68 bytes
             let mut handshake_buf = [0u8; 68];
-
-            loop {
-                stream.read_exact(&mut handshake_buf)?;
-                if handshake_buf != [0u8; 68] {
-                    break;
-                }
-            }
+            stream.read_exact(&mut handshake_buf)?;
 
             if handshake_bytes[28..48] != handshake_buf[28..48] {
                 return Ok(());
@@ -118,20 +112,17 @@ impl PeerConnManager {
 
         loop {
             if self.my_state == State::None {
-                stream.write(&Message::Interested.as_bytes()?)?;
+                stream.write_all(&Message::Interested.as_bytes()?)?;
                 self.my_state = State::Interested;
             }
 
             if self.state == State::Choked {
-                loop {
-                    let buf = self.read_stream(&mut stream)?;
-                    if verbose {
-                        println!("got unchoke!");
-                    }
-                    if buf[0] == 1 {
-                        self.state = State::UnChoked;
-                        break;
-                    }
+                let buf = self.read_stream(&mut stream)?;
+                if verbose {
+                    println!("got unchoke!");
+                }
+                if buf[0] == 1 {
+                    self.state = State::UnChoked;
                 }
             }
 
@@ -143,7 +134,7 @@ impl PeerConnManager {
                         if verbose {
                             println!("empty queue! returing..");
                         }
-                        stream.write(&Message::NotInterested.as_bytes()?)?;
+                        stream.write_all(&Message::NotInterested.as_bytes()?)?;
                         return Err(ConnError::EmptyQueue);
                     }
                 };
@@ -187,7 +178,7 @@ impl PeerConnManager {
                         block_len
                     };
 
-                    stream.write(
+                    stream.write_all(
                         &Message::Request {
                             index: piece_index as u32,
                             begin: (i * block_len) as u32,
@@ -195,10 +186,11 @@ impl PeerConnManager {
                         }
                         .as_bytes()?,
                     )?;
+
                     loop {
                         let block = self.read_stream(&mut stream)?;
                         if block[0] == 7 {
-                            buf.write_all(&block[9..])?;
+                            buf.extend_from_slice(&block[9..]);
                             hasher.update(&block[9..]);
                             if verbose {
                                 println!("got block {} from {}", i, socket_addr);
@@ -224,7 +216,7 @@ impl PeerConnManager {
                     file.seek(SeekFrom::Start(
                         piece_index as u64 * torrent_file.info.piece_length as u64,
                     ))?;
-                    file.write(&buf)?;
+                    file.write_all(&buf)?;
 
                     std::mem::drop(file);
 
@@ -242,8 +234,8 @@ impl PeerConnManager {
         let mut pointer = 0usize;
         for index in 1..buf.len() {
             for bit in 0..8 {
-                let mask = 255 >> bit;
-                let bit_is_set = (mask & buf[index]) > 0;
+                let mask = 1 << (7 - bit);
+                let bit_is_set = (mask & buf[index]) != 0;
                 if bit_is_set {
                     peer_pieces.insert(pointer);
                 }
@@ -257,33 +249,19 @@ impl PeerConnManager {
     }
 
     fn read_stream(&self, stream: &mut impl Read) -> io::Result<Vec<u8>> {
-        #[allow(unused_assignments)]
-        let mut len_prefix2 = [0; 4];
+        let mut len_prefix = [0; 4];
+        stream.read_exact(&mut len_prefix)?;
+        let num = u32::from_be_bytes(len_prefix) as usize;
 
-        loop {
-            let mut len_prefix = [0; 4];
-            stream.read_exact(&mut len_prefix)?;
-            if len_prefix.len() > 0 && len_prefix.len() == 4 && u32::from_be_bytes(len_prefix) != 0
-            {
-                len_prefix2 = len_prefix;
-                break;
-            }
-        }
-        let num = u32::from_be_bytes(len_prefix2) as usize;
-
+        // Empty message = Keepalive
         if num == 0 {
-            return Ok(vec![9]);
+            return Ok(Vec::from([9]));
         }
 
         let mut buf = Vec::new();
         buf.resize(num as usize, 0);
+        stream.read_exact(&mut buf)?;
 
-        loop {
-            if buf.len() > 0 && buf.len() >= num {
-                stream.read_exact(&mut buf)?;
-                break;
-            }
-        }
         Ok(buf)
     }
 
